@@ -1,59 +1,96 @@
-import { stats, workers, pipeline } from "./data/mockDashboard";
-import { StatCard } from "./components/StatCard";
-import { WorkerCard } from "./components/WorkerCard";
-import { PipelineStage } from "./components/PipelineStage";
-import { ActionButton } from "./components/ActionButton";
+import { useEffect, useState } from "react";
+import {
+  getPipelineLogs,
+  getPipelineRun,
+  startBasicEnrichment,
+} from "./api/vivApi";
+
+import { PipelineRunCard } from "./components/PipelineRunCard";
+import { StatusWindow } from "./components/StatusWindow";
+
+import type {
+  PipelineLog,
+  PipelineRun,
+} from "./api/vivApi";
 
 export default function App() {
+  const [runId, setRunId] = useState<number | null>(null);
+  const [run, setRun] = useState<PipelineRun | null>(null);
+  const [logs, setLogs] = useState<PipelineLog[]>([]);
+  const [isStarting, setIsStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleStartBasicEnrichment() {
+    try {
+      setIsStarting(true);
+      setError(null);
+
+      const result = await startBasicEnrichment();
+
+      setRunId(result.pipeline_run_id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setIsStarting(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!runId) return;
+
+    const intervalId = window.setInterval(async () => {
+      try {
+        const [runData, logData] = await Promise.all([
+          getPipelineRun(runId),
+          getPipelineLogs(runId),
+        ]);
+
+        setRun(runData);
+        setLogs(logData);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Polling failed");
+      }
+    }, 5000);
+
+    return () => window.clearInterval(intervalId);
+  }, [runId]);
+
+
+
   return (
-    <main className="min-h-screen bg-gray-100 p-8">
+    <main className="min-h-screen bg-gray-100 p-8 text-gray-900">
       <header className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-950">
-          VIV Dashboard
-        </h1>
+        <h1 className="text-3xl font-bold">VIV Dashboard</h1>
         <p className="mt-2 text-gray-600">
-          Celery worker control and vocabulary enrichment monitoring.
+          Basic enrichment control and monitoring.
         </p>
       </header>
 
-      <section className="mb-8 grid gap-4 md:grid-cols-4">
-        {stats.map((item) => (
-          <StatCard key={item.label} {...item} />
-        ))}
-      </section>
-
-      <section className="mb-8 rounded-xl border bg-white p-5 shadow-sm">
+      <section className="mb-8 rounded-xl border bg-white p-6 shadow-sm">
         <h2 className="mb-4 text-xl font-semibold">Controls</h2>
 
-        <div className="flex flex-wrap gap-3">
-          <ActionButton label="Run Frequency" />
-          <ActionButton label="Run Definitions" />
-          <ActionButton label="Run Brave Search" />
-          <ActionButton label="Run Topics" />
-          <ActionButton label="Run Summaries" />
-          <ActionButton label="Retry Failed" />
-        </div>
+        <button
+          onClick={handleStartBasicEnrichment}
+          disabled={isStarting}
+          className="rounded-lg bg-gray-900 px-5 py-2 text-white hover:bg-gray-700 disabled:opacity-50"
+        >
+          {isStarting ? "Starting..." : "Start Basic Enrichment"}
+        </button>
+
+        {runId && (
+          <p className="mt-3 text-sm text-gray-600">
+            Current pipeline run ID: <strong>{runId}</strong>
+          </p>
+        )}
+
+        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
       </section>
 
-      <section className="mb-8">
-        <h2 className="mb-4 text-xl font-semibold">Workers</h2>
-
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {workers.map((worker) => (
-            <WorkerCard key={worker.name} {...worker} />
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <h2 className="mb-4 text-xl font-semibold">Pipeline Progress</h2>
-
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {pipeline.map((stage) => (
-            <PipelineStage key={stage.name} {...stage} />
-          ))}
-        </div>
-      </section>
+      <div className="grid gap-8 lg:grid-cols-[1fr_1.2fr]">
+        <PipelineRunCard run={run} />
+        <StatusWindow logs={logs} />
+      </div>
     </main>
   );
 }
+
