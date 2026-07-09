@@ -51,3 +51,21 @@ export async function getPipelineLogs(runId: number) {
 
   return res.json() as Promise<PipelineLog[]>;
 }
+
+export async function startFullResearchPipeline(batchSize = 100) {
+  const res = await fetch(
+    `${API_BASE_URL}/admin/research/pipeline/run-all?batch_size=${batchSize}`,
+    {
+      method: "POST",
+    }
+  );
+
+  if (!res.ok) throw new Error("Failed to start full research pipeline");
+
+  return res.json() as Promise<{
+    status: string;
+    pipeline_run_id: number;
+    task_id: string;
+    batch_size: number;
+  }>;
+}
